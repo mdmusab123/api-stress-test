@@ -28,7 +28,7 @@ pip (Python package installer)
 
 Clone the repository:
 
-git clone [https://github.com/yourusername/your-repo-name.git](https://github.com/mdmusab123/api-stress-test)
+git clone [https://github.com/mdmusab123/api-stress-test](https://github.com/mdmusab123/api-stress-test)
 cd api-stress-test
 
 
