@@ -1,115 +1,154 @@
-🚀 Advanced API Load Testing Suite (Locust)
+# API Stress Test — Locust Load Testing Suite
 
-Repository Description: An advanced, enterprise-ready Locust load testing suite designed to stress-test and benchmark APIs. It features zero-code UI configuration for endpoints and API keys, adjustable payload sizes to test bandwidth limits, dynamic wait times, and targeted task execution via command-line tags.
+![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white)
+![Locust](https://img.shields.io/badge/Locust-Load%20Testing-00A86B?style=flat)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat)
 
-This repository provides a highly customizable load testing script built on top of Locust. It is designed to evaluate server performance, database bottlenecking, and API rate limits without needing to hardcode environment-specific variables.
+A configurable API load testing suite built with [Locust](https://locust.io/). Designed to benchmark REST APIs under realistic traffic conditions — with zero hardcoded configuration. All settings (host, API key, endpoints, payload size, wait times) are controlled via the Locust Web UI or CLI flags, making it easy to reuse across different projects and environments.
 
-✨ Key Features
+---
 
-Zero-Code UI Configuration: Set your target Host, secret API Keys, and target endpoints directly from the Locust Web UI.
+## What This Does
 
-Dynamic Wait Times: Simulate casual browsing or aggressive traffic spikes by adjusting min/max wait times on the fly.
+Most load testing scripts are throwaway — hardcoded URLs, fixed user counts, no flexibility. This one is built to be reused:
 
-Payload Sizing: Test your server's JSON parsing and bandwidth limits by toggling between small, medium, and large request payloads.
+- **No code changes needed** to test a different API — just change the host in the UI
+- **Three task types** with weighted distribution to simulate real-world traffic patterns
+- **Dynamic payloads** (small / medium / large) to test how a server handles JSON parsing under load
+- **Cache-busting** on GET requests so CDN/edge caches don't skew results
+- **Custom failure logic** — treats expected 404s as success so they don't pollute your crash stats
+- **10-second SLA threshold** — any request taking longer is automatically marked as a failure
 
-Task Tagging: Isolate and test specific infrastructure (e.g., only run GET requests to test read-replicas) using CLI tags.
+---
 
-Advanced Event Logging: Custom hooks capture detailed tracebacks for failed requests, making debugging server crashes in headless mode much easier.
+## How It Works
 
-🛠️ Prerequisites
+```
+Locust spawns N virtual users
+        ↓
+Each user runs tasks based on weighted distribution:
+  POST /primary   → 5x  (core write traffic)
+  GET  /secondary → 3x  (data fetching / polling)
+  POST /tertiary  → 1x  (infrequent edge actions)
+        ↓
+Results stream to Web UI in real time
+(RPS, latency percentiles, failure rate)
+```
 
-Before you begin, ensure you have the following installed on your local machine:
+---
 
-Python 3.8 or higher
+## Quick Start
 
-pip (Python package installer)
-
-📦 Installation
-
-Clone the repository:
-
-git clone [https://github.com/mdmusab123/api-stress-test](https://github.com/mdmusab123/api-stress-test)
-cd api-stress-test
-
-
-Install Locust:
-It is recommended to use a virtual environment, but you can install Locust globally:
-
+**1. Install Locust**
+```bash
 pip install locust
+```
 
-
-🚀 Usage Guide
-
-Method 1: Interactive Web UI (Recommended)
-
-The easiest way to run tests is via the built-in web interface.
-
-Start the Locust server:
-
+**2. Run with Web UI**
+```bash
 locust -f locustfile.py
+```
+Open [http://localhost:8089](http://localhost:8089) in your browser.
 
+Fill in the form:
+- **Host** — your target API base URL (e.g. `https://api.example.com`)
+- **Number of users** — concurrent virtual users to simulate
+- **Spawn rate** — users added per second
+- **API Key** — passed as `X-API-KEY` header (marked secret, not logged)
+- **Payload size** — `small`, `medium` (~1KB metadata), or `large` (~10KB + bulk array)
 
-Open your web browser and navigate to: http://localhost:8089
-
-Fill out the configuration form:
-
-Number of users: Total concurrent users to simulate.
-
-Spawn rate: How many users to add per second.
-
-Host: The base URL of your application (e.g., https://api.example.com).
-
-Custom Parameters: Enter your secret API key, define your endpoints, and choose your payload size.
-
-Click Start Swarming.
-
-Method 2: Headless Mode (CLI / CI/CD pipeline)
-
-For automated testing or running on remote servers without a GUI, use headless mode. You can pass all UI parameters via environment variables or CLI arguments.
-
+**3. Run Headless (CLI / CI pipeline)**
+```bash
 locust -f locustfile.py \
   --headless \
   -u 500 \
   -r 50 \
   --run-time 5m \
-  --host [https://api.example.com](https://api.example.com) \
+  --host https://api.example.com \
   --api-key YOUR_SECRET_KEY \
   --payload-size large
+```
 
-
-🎛️ Advanced Configuration Breakdown
-
-Endpoint Weights
-
-By default, the script distributes traffic to simulate real-world usage:
-
-Primary POST (@task(5)): Executes 5x more often. Represents core app interactions.
-
-Secondary GET (@task(3)): Executes 3x more often. Represents data fetching/polling.
-
-Tertiary POST (@task(1)): Executes rarely. Represents actions like bug reporting or profile updates.
-
-Task Tagging
-
-You can restrict the test to only run specific functions using the --tags argument.
-
-Available tags in this script: core, edge, read, write, get, post.
-
-Example: Run only GET requests to test database read performance:
-
+**4. Run Specific Task Types Only**
+```bash
+# Test only read endpoints (GET requests)
 locust -f locustfile.py --tags read
 
+# Test only write endpoints (POST requests)
+locust -f locustfile.py --tags write
 
-📊 Analyzing Results
+# Test only core traffic (excludes edge cases)
+locust -f locustfile.py --tags core
+```
 
-While the test is running, Locust provides real-time statistics:
+---
 
-95%ile (ms): The most important metric. If this number spikes above 1000-2000ms, your server is beginning to bottleneck.
+## Task Breakdown
 
-Failures: Look at the "Failures" tab to see if your server is returning 502 Bad Gateway (crashes), 504 Timeout (queue full), or standard business logic errors.
+| Task | Method | Weight | Tags | Purpose |
+|------|--------|--------|------|---------|
+| `test_primary_post_endpoint` | POST | 5 | `core, post, write` | Simulates heavy write traffic |
+| `test_secondary_get_endpoint` | GET | 3 | `core, get, read` | Simulates data fetching / polling |
+| `test_tertiary_post_endpoint` | POST | 1 | `edge, post` | Simulates infrequent complex actions |
 
-Note: The script is designed to treat expected business errors (like a 404 Not Found for a randomly generated user ID) as a successful server response so it doesn't skew your crash statistics.
+Weight `5:3:1` means for every 9 requests, 5 go to the primary endpoint, 3 to secondary, 1 to tertiary — a realistic distribution for most SaaS APIs.
 
-⚠️ Disclaimer
+---
 
-Do NOT use this tool against servers you do not own or do not have explicit permission to test. High-concurrency load testing mimics the behavior of a Distributed Denial of Service (DDoS) attack and can take down production environments, incur high cloud-computing costs, and trigger automated security blocks.
+## Reading the Results
+
+While the test runs, focus on these metrics in the Locust UI:
+
+| Metric | What it means | Warning threshold |
+|--------|--------------|-------------------|
+| **95th percentile (ms)** | 95% of requests finish within this time | > 1000ms = server struggling |
+| **Failures/s** | Requests returning unexpected errors | Any spike = investigate |
+| **RPS** | Requests per second the server handles | Drops under load = bottleneck |
+
+**Common failure patterns:**
+- `502 Bad Gateway` — app server crashed, proxy returning error
+- `504 Gateway Timeout` — request queue backed up
+- `401 Unauthorized` — API key not passed correctly
+- `Timeout SLA Breached (>10s)` — custom threshold, server too slow
+
+---
+
+## Project Structure
+
+```
+api-stress-test/
+├── locustfile.py    # Main test file — all logic lives here
+└── README.md
+```
+
+---
+
+## Key Implementation Details
+
+**Dynamic wait time** — instead of a fixed `between(1, 3)`, wait time reads from UI input at runtime so you can simulate both casual users and aggressive traffic without restarting.
+
+**Cache busting** — GET requests append a random `?cb=` query parameter to prevent CDN/edge caches from returning cached responses, ensuring each request actually hits the origin server.
+
+**Smart failure handling** — a `404` on a randomly generated resource ID is a valid business response, not a server crash. Marking it as success keeps failure stats meaningful and focused on real errors.
+
+**Event hook logging** — a global `request` event listener logs full tracebacks on failures, which is critical when running in headless/CI mode where you can't see the UI.
+
+---
+
+## Author
+
+**Musab Ahmed**
+- GitHub: [@mdmusab123](https://github.com/mdmusab123)
+- Email: mdmusab207@gmail.com
+
+---
+
+## Disclaimer
+
+Only use this tool against servers you own or have explicit written permission to test. High-concurrency load testing mimics DDoS behavior and can take down production environments or trigger automated security blocks.
+
+---
+
+## License
+
+MIT License
